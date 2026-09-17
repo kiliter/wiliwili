@@ -1,0 +1,25 @@
+.github/workflows/build.yaml
+  s_a9f479431e6c6b::t_6db57476c0ded5 34-35,157-161
+.github/workflows/windows-backspace.yaml
+  s_a9f479431e6c6b::t_1fd1e6cdaec25e 1-125
+docs/windows-backspace.md
+  s_a9f479431e6c6b::t_a8c83838fa99cb 1-24
+patches/windows-backspace.patch
+  s_a9f479431e6c6b::t_98eba7a530d6d3 1-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "92288d01318c89e6babefd2852ca1b4d2d5bcfc8",
+  "prompts": {},
+  "sessions": {
+    "s_a9f479431e6c6b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ae96-f6c8-7382-a838-191d9dd414fa",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "kiliter <kiliter@qq.com>"
+    }
+  }
+}
