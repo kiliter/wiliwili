@@ -1,0 +1,55 @@
+diff --git a/library/include/borealis/platforms/glfw/glfw_ime.hpp b/library/include/borealis/platforms/glfw/glfw_ime.hpp
+index 2c7ab8b..8989f77 100644
+--- a/library/include/borealis/platforms/glfw/glfw_ime.hpp
++++ b/library/include/borealis/platforms/glfw/glfw_ime.hpp
+@@ -29,6 +29,9 @@ class GLFWImeManager : public ImeManager
+   public:
+     GLFWImeManager(GLFWwindow* window);
+ 
++    // 查询文本输入框状态，让返回键映射避开退格删字操作。
++    static bool isInputDialogOpen() { return showIME; }
++
+     bool openForText(std::function<void(std::string)> f, std::string headerText = "",
+         std::string subText = "", int maxStringLength = 32, std::string initialText = "",
+         int kbdDisableBitmask = KeyboardKeyDisableBitmask::KEYBOARD_DISABLE_NONE) override;
+diff --git a/library/lib/platforms/glfw/glfw_input.cpp b/library/lib/platforms/glfw/glfw_input.cpp
+index 9b31fcf..e776fc4 100644
+--- a/library/lib/platforms/glfw/glfw_input.cpp
++++ b/library/lib/platforms/glfw/glfw_input.cpp
+@@ -19,6 +19,9 @@
+ #include <borealis/core/logger.hpp>
+ #include <borealis/platforms/desktop/desktop_platform.hpp>
+ #include <borealis/platforms/glfw/glfw_input.hpp>
++#if defined(_WIN32)
++#include <borealis/platforms/glfw/glfw_ime.hpp>
++#endif
+ 
+ #define GLFW_INCLUDE_NONE
+ #include <GLFW/glfw3.h>
+@@ -263,16 +266,24 @@ void GLFWInputManager::updateUnifiedControllerState(ControllerState* state)
+         }
+     }
+ 
++    // Windows 页面使用退格键返回；输入框保留退格删字和 Esc 取消。
++    // 在 A/B 互换前统一选择返回键，确保两种控制器布局行为一致。
++    int backKey = GLFW_KEY_ESCAPE;
++#if defined(_WIN32)
++    if (!GLFWImeManager::isInputDialogOpen())
++        backKey = GLFW_KEY_BACKSPACE;
++#endif
++
+     // Add keyboard keys on top of gamepad buttons
+     if (Application::isSwapInputKeys()) {
+         state->buttons[BUTTON_B] |= glfwGetKey(this->window, GLFW_KEY_KP_ENTER) != 0;
+         state->buttons[BUTTON_B] |= glfwGetKey(this->window, GLFW_KEY_ENTER) != 0;
+-        state->buttons[BUTTON_A] |= glfwGetKey(this->window, GLFW_KEY_ESCAPE) != 0;
++        state->buttons[BUTTON_A] |= glfwGetKey(this->window, backKey) != 0;
+         state->buttons[BUTTON_A] |= glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+     } else {
+         state->buttons[BUTTON_A] |= glfwGetKey(this->window, GLFW_KEY_KP_ENTER) != 0;
+         state->buttons[BUTTON_A] |= glfwGetKey(this->window, GLFW_KEY_ENTER) != 0;
+-        state->buttons[BUTTON_B] |= glfwGetKey(this->window, GLFW_KEY_ESCAPE) != 0;
++        state->buttons[BUTTON_B] |= glfwGetKey(this->window, backKey) != 0;
+         state->buttons[BUTTON_B] |= glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+     }
+     state->buttons[BUTTON_X] |= (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS);

@@ -1,0 +1,125 @@
+name: Windows 退格返回键构建
+
+on:
+  push:
+    branches: [yoga]
+    paths:
+      - '.github/workflows/windows-backspace.yaml'
+      - 'patches/windows-backspace.patch'
+      - 'docs/windows-backspace.md'
+  workflow_dispatch:
+
+# 构建过程仅需读取源码，发布由显式的 Release 操作完成。
+permissions:
+  contents: read
+
+jobs:
+  build-win:
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        include:
+          - { arch: x86_64, sys: mingw64, env: x86_64, driver: d3d, cmake: "-DUSE_D3D11=ON" }
+    runs-on: ${{ contains(matrix.sys, 'arm64') && 'windows-11-arm' || 'windows-latest' }}
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: msys2/setup-msys2@v2
+        id: msys2
+        with:
+          msystem: ${{ matrix.sys }}
+          path-type: inherit
+          cache: false
+          release: ${{ contains(matrix.sys, 'arm64') }}
+          install: >-
+            mingw-w64-${{ matrix.env }}-ninja
+            mingw-w64-${{ matrix.env }}-pkgconf
+            mingw-w64-${{ matrix.env }}-cc
+      - name: 检出代码与子模块
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: 应用 Windows 退格返回键补丁
+        run: |
+          # 校验补丁与固定的子模块版本匹配，再应用修改。
+          git -C library/borealis apply --check ../../patches/windows-backspace.patch
+          git -C library/borealis apply ../../patches/windows-backspace.patch
+      - name: 安装依赖
+        run: |
+          curl -LO https://github.com/xfangfang/wiliwili/releases/download/v0.1.0/${MINGW_PACKAGE_PREFIX}-mpv-0.40.0-2-any.pkg.tar.zst
+          pacman -U --noconfirm *.pkg.tar.zst
+
+          curl -sLO https://github.com/rainers/cv2pdb/releases/download/v0.54/cv2pdb-0.54.zip
+          unzip cv2pdb-0.54.zip cv2pdb64.exe -d /usr/bin
+      - name: 更新手柄数据库
+        run: |
+          BRLS_GLFW=library/borealis/library/lib/extern/glfw
+          cmake -P ${BRLS_GLFW}/CMake/GenerateMappings.cmake ${BRLS_GLFW}/src/mappings.h.in ${BRLS_GLFW}/src/mappings.h
+      - name: 编译依赖库
+        run: |
+          curl -sL https://github.com/webmproject/libwebp/archive/v1.6.0.tar.gz | tar zxf - -C /tmp
+          cmake -B build-libwebp -S /tmp/libwebp-1.6.0 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX} \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DWEBP_BUILD_ANIM_UTILS=OFF \
+            -DWEBP_BUILD_CWEBP=OFF \
+            -DWEBP_BUILD_DWEBP=OFF \
+            -DWEBP_BUILD_GIF2WEBP=OFF \
+            -DWEBP_BUILD_IMG2WEBP=OFF \
+            -DWEBP_BUILD_VWEBP=OFF \
+            -DWEBP_BUILD_WEBPINFO=OFF \
+            -DWEBP_BUILD_WEBPMUX=OFF \
+            -DWEBP_BUILD_LIBWEBPMUX=OFF \
+            -DWEBP_BUILD_EXTRAS=OFF
+          cmake --build build-libwebp
+          cmake --install build-libwebp
+
+          curl -sL https://curl.se/download/curl-8.7.1.tar.xz | tar Jxf - -C /tmp
+          cmake -B build-curl -S /tmp/curl-8.7.1 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX} \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DHTTP_ONLY=ON \
+            -DCURL_USE_SCHANNEL=ON \
+            -DCURL_DISABLE_PROGRESS_METER=ON \
+            -DBUILD_CURL_EXE=OFF \
+            -DBUILD_TESTING=OFF \
+            -DBUILD_LIBCURL_DOCS=OFF \
+            -DUSE_LIBIDN2=OFF \
+            -DUSE_WIN32_IDN=ON \
+            -DCURL_USE_LIBSSH2=OFF \
+            -DCURL_USE_LIBPSL=OFF \
+            -DZLIB_USE_STATIC_LIBS=ON
+          cmake --build build-curl
+          cmake --install build-curl
+      - name: 编译 Windows 程序
+        run: |
+          cmake -B build -G Ninja ${{ matrix.cmake }} \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DPLATFORM_DESKTOP=ON \
+            -DWIN32_TERMINAL=OFF \
+            -DUSE_SYSTEM_CURL=ON \
+            -DUSE_LIBROMFS=ON \
+            -DBRLS_UNITY_BUILD=ON \
+            -DCMAKE_UNITY_BUILD_BATCH_SIZE=20 \
+            -DZLIB_USE_STATIC_LIBS=ON \
+            -DMPV_BUNDLE_DLL=${MINGW_PREFIX}/bin/libmpv-2.dll \
+            -DVERSION_BUILD=${{ github.run_number }}
+          cmake --build build
+          cv2pdb64 build/wiliwili.exe
+          cp -a docs/windows-backspace.md build/使用说明.md
+          cp -a LICENSE build
+      - name: 上传 Windows 构建包
+        uses: actions/upload-artifact@v6
+        with:
+          name: wiliwili-Windows-Backspace-x86_64
+          if-no-files-found: error
+          path: |
+            build/wiliwili.exe
+            build/wiliwili.pdb
+            build/使用说明.md
+            build/LICENSE
+
